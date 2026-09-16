@@ -1,0 +1,59 @@
+name: CI Pipeline
+
+on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: [stable, oldstable]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        if: hashFiles('go.mod') != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: ${{ hashFiles('go.mod') != '' && 'go' || '' }}
+
+      - name: Install dependencies
+        if: hashFiles('go.mod') != ''
+        run: go mod download
+
+      - name: Lint and format check
+        if: hashFiles('go.mod') != ''
+        run: |
+          gofmt -l .
+          go vet ./...
+
+      - name: Build
+        if: hashFiles('go.mod') != ''
+        run: go build ./...
+
+      - name: Unit and integration tests
+        if: hashFiles('go.mod') != ''
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Pipeline summary
+        if: always()
+        run: |
+          echo "| Step | Outcome |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Checkout | ${{ steps.checkout.outcome }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Set up Go | ${{ steps.setup-go.outcome }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Install dependencies | ${{ steps.install-deps.outcome }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Lint and format check | ${{ steps.lint.outcome }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build | ${{ steps.build.outcome }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Unit and integration tests | ${{ steps.test.outcome }} |" >> "$GITHUB_STEP_SUMMARY"
